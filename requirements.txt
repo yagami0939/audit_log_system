@@ -1,0 +1,5 @@
+nicegui
+pyjwt
+captcha
+sqlalchemy
+pymysql
