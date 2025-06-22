@@ -70,17 +70,23 @@ class MyRichTable():
             rows=[],
             row_key='name',
             selection='multiple',
-            pagination=20
+            pagination=20,
+            on_pagination_change=lambda e: ui.notify(e.value),
         ).classes('w-full')
         pass
     
 
 filter_inputs = {}
+page_size = 20
+current_page = 1
+order_by = None
+order_desc = False
+
 def get_model_columns(model: Base):
     """返回模型所有字段名及类型，排除关系字段"""
     return [(c.name, str(c.type)) for c in model.__table__.columns]
 
-def refresh_table():
+def refresh_table(model):
         # nonlocal current_page, order_by, order_desc, visible_columns
 
         # 读筛选条件
@@ -96,11 +102,14 @@ def refresh_table():
         # order_desc = table.sort_order == 'desc'
 
         # 查询数据
-        data, total = query_model(session, model, filters, current_page, page_size, order_by, order_desc)
+        data, total = query_model( model, filters, current_page, page_size, order_by, order_desc)
+
 
         # 更新列和行
-        table.columns = [c for c in table_columns if c['name'] in visible_columns]
-        table.rows = data_to_rows(data, columns, visible_columns)
+        columns = get_model_columns(model)
+        # table.columns = [c for c in table_columns if c['name'] in visible_columns]
+        rows = data_to_rows(data, columns, visible_columns=None)
+        return rows
 
 def create_filter_inputs(columns, batch=4):
     """根据字段动态创建筛选输入框，返回字典{字段名: input控件}"""
@@ -114,24 +123,25 @@ def create_filter_inputs(columns, batch=4):
                 inputs[name] = inp
     return inputs
 
-def query_model(session: Session, model, filters, page, page_size, order_by, order_desc):
+def query_model(model, filters, page, page_size, order_by, order_desc):
+    session = SessionLocal()
+
     q = session.query(model)
     # 模糊查询条件组合
-    # conditions = []
-    # for field, value in filters.items():
-    #     if value:
-    #         conditions.append(getattr(model, field).like(f'%{value}%'))
-    # if conditions:
-    #     q = q.filter(*conditions)
-    # # 排序
-    # if order_by:
-    #     col = getattr(model, order_by)
-    #     q = q.order_by(col.desc() if order_desc else col.asc())
-    # total = q.count()
+    conditions = []
+    for field, value in filters.items():
+        if value:
+            conditions.append(getattr(model, field).like(f'%{value}%'))
+    print('conditions',conditions)
+    if conditions:
+        q = q.filter(*conditions)
+    # 排序
+    if order_by:
+        col = getattr(model, order_by)
+        q = q.order_by(col.desc() if order_desc else col.asc())
+    total = q.count()
     # 分页
-    # results = q.offset((page-1)*page_size).limit(page_size).all()
-    results = q.all()
-    total = len(results)
+    results = q.offset((page-1)*page_size).limit(page_size).all()
     return results, total
 
 def data_to_rows(data, columns, visible_columns):
@@ -148,17 +158,16 @@ def data_to_rows(data, columns, visible_columns):
         rows.append(row)
     return rows
 
+def table_pagination_change(e):
+    print(e)
+    pass
 
 
 def build_table_ui(model):
     columns = get_model_columns(model)  # 所有列
     visible_columns = set([c[0] for c in columns])  # 默认都显示
-    page_size = 10
-    current_page = 1
-    order_by = None
-    order_desc = False
+    
 
-    session = SessionLocal()
 
     # 顶部筛选区
     filter_inputs = create_filter_inputs(columns)
@@ -189,8 +198,17 @@ def build_table_ui(model):
         rows=[],
         row_key='name',
         selection='multiple',
-        pagination=20
+        pagination=page_size,
+        on_pagination_change=table_pagination_change
     ).classes('w-full')
+
+    with table.add_slot('top-left'):
+        def toggle() -> None:
+            table.toggle_fullscreen()
+            button.props('icon=fullscreen_exit' if table.is_fullscreen else 'icon=fullscreen')
+            button.text = '退出全屏' if table.is_fullscreen else '全屏'
+        button = ui.button('全屏', icon='fullscreen', on_click=toggle).props('flat')
+
 
     # for filter_input in filter_inputs:
         # filter_inputs[filter_input].bind_value(table,'filter')
@@ -207,7 +225,7 @@ def build_table_ui(model):
     btn_query.on('click', lambda e: refresh_table())
 
     # 初始加载
-    # refresh_table()
+    refresh_table(model)
 
     # 表格排序分页监听
     def on_sort(event):
@@ -222,7 +240,7 @@ def build_table_ui(model):
     # @table.on('row_dblclick')
     def on_row_dblclick(event):
         index = event.args['row']
-        data, _ = query_model(session, model, {k: v.value for k, v in filter_inputs.items()}, current_page, page_size, order_by, order_desc)
+        data, _ = query_model(model, {k: v.value for k, v in filter_inputs.items()}, current_page, page_size, order_by, order_desc)
         item = data[index]
         ui.notify(f'进入详情页：{item}')  # 你可以替换成真正的跳转逻辑
 

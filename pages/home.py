@@ -4,6 +4,7 @@ from utils import get_jwt_token, clear_jwt_cookie
 from rbac import has_permission
 from models.empolyee import Employee
 from components.rich_table import build_table_ui
+from components.rich_table_v2 import RichTable
 
 def show():
     token = get_jwt_token()
@@ -21,7 +22,8 @@ def show():
 
     ui.label(f'欢迎你，用户ID: {payload["sub"]}, 角色: {payload["role"]}')
 
-    build_table_ui(Employee)
+    # build_table_ui(Employee)
+    RichTable(Employee)
 
 
     if payload['role'] == 'admin':
