@@ -9,8 +9,71 @@ from database import SessionLocal
 
 class MyRichTable():
 
-    def __init__(model: Base):
+    def __init__(self,model: Base):
+        self.filter_inputs = {}
+        self.model = model
+        self.model_columns = self.get_model_columns()
         pass
+
+    def get_model_columns(self):
+        """返回模型所有字段名及类型，排除关系字段"""
+        return [(c.name, str(c.type)) for c in self.model.__table__.columns]
+    
+    def create_filter_inputs(columns, batch=4):
+        """根据字段动态创建筛选输入框，返回字典{字段名: input控件}"""
+        self.filter_inputs = {}
+        for i in range(0,len(columns),batch):
+            with ui.row().style('margin-bottom: 8px;') as row:
+                for j, (name, _) in enumerate(columns[i:i+batch]):
+                    inp = ui.input(label=name).style('width: 300px;').props('clearable')
+                    inp.on('keydown.enter',refresh_table) 
+                    self.filter_inputs[name] = inp
+    
+    def get_row_data(self):
+        pass
+
+    def create_main(self):
+        visible_columns = set([c[0] for c in self.model_columns])  # 默认都显示
+        page_size = 10
+        current_page = 1
+        order_by = None
+        order_desc = False
+
+        session = SessionLocal()
+
+        # 顶部筛选区
+        filter_inputs = create_filter_inputs(columns)
+        # 中间按钮区
+        with ui.row().classes('gap-2 my-2').style('justify-content: flex-end; width: 100%') as button_row:
+            btn_query = ui.button('查询',icon='search',on_click=refresh_table)
+            ui.button('新增')
+            ui.button('修改')
+            ui.button('删除')
+            ui.button('导入')
+            ui.button('导出')
+            ui.button('对比')
+
+        ui.separator()
+
+        # 下方列控制复选框
+        with ui.expansion('列显示/隐藏'):
+            col_checkboxes = {}
+            with ui.row():
+                for col_name, _ in columns:
+                    cb = ui.checkbox(col_name, value=True)
+                    col_checkboxes[col_name] = cb
+
+        # 表格初始化
+        table_columns = [{'name': c[0], 'label': c[0], 'field': c[0], 'sortable':True ,'alignment':'align'} for c in columns]
+        table = ui.table(
+            columns=[c for c in table_columns if c['name'] in visible_columns],
+            rows=[],
+            row_key='name',
+            selection='multiple',
+            pagination=20
+        ).classes('w-full')
+        pass
+    
 
 filter_inputs = {}
 def get_model_columns(model: Base):
@@ -33,7 +96,7 @@ def refresh_table():
         # order_desc = table.sort_order == 'desc'
 
         # 查询数据
-        # data, total = query_model(session, model, filters, current_page, page_size, order_by, order_desc)
+        data, total = query_model(session, model, filters, current_page, page_size, order_by, order_desc)
 
         # 更新列和行
         table.columns = [c for c in table_columns if c['name'] in visible_columns]
